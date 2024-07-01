@@ -265,12 +265,11 @@ def main():
         org_repo_url = input("Enter the organization repository URL: ")
     old_repo_name = org_repo_url.split('/')[-1]
     old_repo_name = old_repo_name.replace('.git', '')
-    if input(f"Is the repository name '{old_repo_name}' correct? (y/n): ").lower() != 'y':
+    repo_name = old_repo_name.split('-')[-2]
+    if input(f"Do you want to name the new repo '{repo_name}' ? (y/n): ").lower() not in ['y', ' ']:
         repo_name = input("Enter the correct repository name: ")
-    else:
-        repo_name = old_repo_name.split('-')[-2]
     ssh_repo_url = f"git@{org_repo_url[8:].replace('github.com/', 'github.com:')}"
-    print(f"Repository name: {ssh_repo_url}")
+    print(f"Repository SSH URL: {ssh_repo_url}")
     description = input("Enter a description for the new repository: ")
 
     create_repository(repo_name, description)

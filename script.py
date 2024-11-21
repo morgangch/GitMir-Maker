@@ -262,7 +262,7 @@ def main():
     if len(os.sys.argv) > 1:
         org_repo_url = os.sys.argv[1]
     else:
-        org_repo_url = input("Enter the organization repository URL: ")
+        org_repo_url = input("Enter the organization repository URL (HTTPS URL): ")
     old_repo_name = org_repo_url.split('/')[-1]
     old_repo_name = old_repo_name.replace('.git', '')
     repo_name = old_repo_name.split('-')[-2]

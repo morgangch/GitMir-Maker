@@ -127,4 +127,11 @@ Once you're done with your SSH key and your GitHub Access Token, you can follow 
 
 ### 2. **Execute the Script Once to Initialize Your `.env`**
    - Execute the script (`python3 script.py`) and it will ask for each piece of data.
-   - Simply fill in the requested data. For the SSH Key, you only need to give the absolute path (exclude `~/` from your input).
+   - Simply fill in the requested data with the inputs
+   - For the SSH Key, you only need to give the absolute path (exclude `~/` from your input).
+
+## Using the Script :
+   - These are the datas collected during the execution of process :
+      - `REPOSITORY_URL`, the HTTPS URL to the Epitech project Repository to clone.
+      - `CLONE_NAME` (facultative) you can deny renaming and the code will use the same name as your Epitech project.
+      - `CLONE_DESCRIPTION` (you can leave it empty) will be the Repository Description (not the README).

@@ -125,27 +125,52 @@ on:
 
 jobs:
   check_coding_style:
-    if: ${{{{ github.repository == 'morgangch/{repo_name}' }}}}
     name: "Use coding_style_checker"
     runs-on: ubuntu-latest
-    container: ghcr.io/epitech/coding-style-checker:latest
+
     steps:
-      - uses: actions/checkout@v4
-      - id: check_coding_style
+      # Checkout repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up environment variables for directories
+      - name: Set environment variables
         run: |
-          check.sh $(pwd) $(pwd)
-          CODING_STYLE_ERRORS=$(cat $(pwd)/coding-style-reports.log)
-          for ERRORS in $CODING_STYLE_ERRORS; do
-            array=(`echo $ERRORS | sed 's/:/\\n/g'`)
-            echo "::error file=${{array[1]#./}},title=${{array[3]#./}} coding style errors detected: ${{array[2]#./}}::${{array[4]#./}}"
-          done
-          if [[ -n $CODING_STYLE_ERRORS ]]
-          then
+          echo "DELIVERY_DIR=$(pwd)" >> $GITHUB_ENV
+          echo "REPORTS_DIR=$(pwd)/reports" >> $GITHUB_ENV
+
+      # Create the reports directory
+      - name: Create reports directory
+        run: mkdir -p ${{ env.REPORTS_DIR }}
+
+      # Run the coding style checker in the container
+      - name: Run coding style checker
+        run: |
+          docker pull ghcr.io/epitech/coding-style-checker:latest
+          docker run --rm \
+            --security-opt "label:disable" \
+            -v ${{ env.DELIVERY_DIR }}:/mnt/delivery \
+            -v ${{ env.REPORTS_DIR }}:/mnt/reports \
+            ghcr.io/epitech/coding-style-checker:latest \
+            /mnt/delivery /mnt/reports
+""" + """
+      # Display coding style errors
+      - name: Analyze coding style reports
+        run: |
+          REPORT_FILE="${{ env.REPORTS_DIR }}/coding-style-reports.log"
+          if [[ -s "$REPORT_FILE" ]]; then
+            echo "Coding style errors detected:"
+            cat "$REPORT_FILE"
+            CODING_STYLE_ERRORS=$(cat "$REPORT_FILE")
+            for ERRORS in $CODING_STYLE_ERRORS; do
+              array=(`echo $ERRORS | sed 's/:/\n/g'`)
+              echo "::error file=${array[1]#./},title=${array[3]#./} coding style errors detected: ${array[2]#./}::${array[4]#./}"
+            done
             exit 1
           else
-            echo No coding style errors detected
+            echo "No coding style errors detected"
           fi
-  
+""" + """
   check_repo:
     if: ${{{{ github.repository == 'morgangch/{repo_name}' }}}}
     name: "Checks if the repository is clean and void of any unwanted files (temp files, binary files, etc.)"
@@ -262,7 +287,7 @@ def main():
     if len(os.sys.argv) > 1:
         org_repo_url = os.sys.argv[1]
     else:
-        org_repo_url = input("Enter the organization repository URL: ")
+        org_repo_url = input("Enter the organization repository URL (HTTPS URL): ")
     old_repo_name = org_repo_url.split('/')[-1]
     old_repo_name = old_repo_name.replace('.git', '')
     repo_name = old_repo_name.split('-')[-2]

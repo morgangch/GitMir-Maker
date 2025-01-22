@@ -153,8 +153,8 @@ jobs:
             -v ${{ env.REPORTS_DIR }}:/mnt/reports \
             ghcr.io/epitech/coding-style-checker:latest \
             /mnt/delivery /mnt/reports
-""" + """
-      # Display coding style errors
+
+    # Display coding style errors
       - name: Analyze coding style reports
         run: |
           REPORT_FILE="${{ env.REPORTS_DIR }}/coding-style-reports.log"
@@ -164,31 +164,30 @@ jobs:
             CODING_STYLE_ERRORS=$(cat "$REPORT_FILE")
             for ERRORS in $CODING_STYLE_ERRORS; do
               array=(`echo $ERRORS | sed 's/:/\n/g'`)
-              echo "::error file=${array[1]#./},title=${array[3]#./} coding style errors detected: ${array[2]#./}::${array[4]#./}"
+              echo "::error file=${{array[1]#./}},title=${{array[3]#./}} coding style errors detected: ${{array[2]#./}}::${{array[4]#./}}"
             done
             exit 1
           else
             echo "No coding style errors detected"
           fi
-""" + """
-  check_repo:
-    if: ${{{{ github.repository == 'morgangch/{repo_name}' }}}}
-    name: "Checks if the repository is clean and void of any unwanted files (temp files, binary files, etc.)"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - id: check_repo
-        run: |
-          UNWANTED_FILES=$(find . -type f -not -path "./git/*" -wholename "*tmp/*" -or -name "*~" -or -name "*.o" -or -name "*.so" -or -name "*.gcno" -or -name "*.gcda" -or -name "*#" -or -name "#*" -or -name "*.gcov")
-          for FILES in $UNWANTED_FILES; do
-            echo "::error file=${{FILES#./}},title=Unwanted file detected::${{FILES#./}}"
-          done
-          if [[ -n $UNWANTED_FILES ]]
-          then
-            exit 1
-          else
-            echo No unwanted files detected
-          fi
+    
+    check_repo:
+      name: "Checks if the repository is clean and void of any unwanted files (temp files, binary files, etc.)"
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - id: check_repo
+          run: |
+            UNWANTED_FILES=$(find . -type f -not -path "./git/*" -wholename "*tmp/*" -or -name "*~" -or -name "*.o" -or -name "*.so" -or -name "*.gcno" -or -name "*.gcda" -or -name "*#" -or -name "#*" -or -name "*.gcov")
+            for FILES in $UNWANTED_FILES; do
+              echo "::error file=${{FILES#./}},title=Unwanted file detected::${{FILES#./}}"
+            done
+            if [[ -n $UNWANTED_FILES ]]
+            then
+              exit 1
+            else
+              echo No unwanted files detected
+            fi
 
   check_program_compilation:
     needs: [check_repo]

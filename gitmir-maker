@@ -16,8 +16,12 @@ SSH_PRIVATE_KEY = os.getenv('SSH_PRIVATE_KEY')
 USERNAME = os.getenv('GITHUB_USERNAME')  # Assurez-vous que votre nom d'utilisateur GitHub est dans le .env
 
 # Fonction pour créer un nouveau dépôt
-def create_repository(repo_name, description):
-    url = "https://api.github.com/user/repos"
+def create_repository(repo_name, description, owner, is_org=False):
+    if is_org:
+        url = f"https://api.github.com/orgs/{owner}/repos"
+    else:
+        url = "https://api.github.com/user/repos"
+    
     headers = {
         "Authorization": f"token {GITHUB_API_KEY}",
         "Accept": "application/vnd.github.v3+json"
@@ -31,14 +35,16 @@ def create_repository(repo_name, description):
 
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code == 201:
-        print(f"Repository '{repo_name}' created successfully.")
+        print(f"Repository '{repo_name}' created successfully in {'organization' if is_org else 'user account'} '{owner}'.")
+        return True
     else:
         print(f"Failed to create repository: {response.json()}")
+        return False
 
 
 # Fonction pour obtenir la clé publique du dépôt pour chiffrer le secret
-def get_public_key(repo_name):
-    url = f"https://api.github.com/repos/{USERNAME}/{repo_name}/actions/secrets/public-key"
+def get_public_key(repo_name, owner):
+    url = f"https://api.github.com/repos/{owner}/{repo_name}/actions/secrets/public-key"
     headers = {
         "Authorization": f"token {GITHUB_API_KEY}",
         "Accept": "application/vnd.github.v3+json"
@@ -61,13 +67,13 @@ def encrypt_secret(public_key, secret_value):
 
 
 # Fonction pour ajouter des secrets au dépôt
-def add_secret(repo_name, secret_name, secret_value):
-    public_key = get_public_key(repo_name)
+def add_secret(repo_name, secret_name, secret_value, owner):
+    public_key = get_public_key(repo_name, owner)
     if not public_key:
         return
     
     encrypted_secret = encrypt_secret(public_key["key"], secret_value)
-    url = f"https://api.github.com/repos/{USERNAME}/{repo_name}/actions/secrets/{secret_name}"
+    url = f"https://api.github.com/repos/{owner}/{repo_name}/actions/secrets/{secret_name}"
     headers = {
         "Authorization": f"token {GITHUB_API_KEY}",
         "Accept": "application/vnd.github.v3+json"
@@ -84,8 +90,8 @@ def add_secret(repo_name, secret_name, secret_value):
         print(f"Failed to add secret: {response.json()}")
 
 # Fonction pour ajouter une variable publique
-def add_variable(repo_name, var_name, var_value):
-    url = f"https://api.github.com/repos/{USERNAME}/{repo_name}/actions/variables"
+def add_variable(repo_name, var_name, var_value, owner):
+    url = f"https://api.github.com/repos/{owner}/{repo_name}/actions/variables"
     headers = {
         "Authorization": f"token {GITHUB_API_KEY}",
         "Accept": "application/vnd.github.v3+json"
@@ -102,7 +108,7 @@ def add_variable(repo_name, var_name, var_value):
         print(f"Failed to add variable: {response.json()}")
 
 # Fonction pour créer le fichier workflow
-def create_workflow(repo_name, mirror_url, old_repo_url):
+def create_workflow(repo_name, mirror_url, old_repo_url, owner):
     # Cloner le vieux repository localement
     old_repo_path = f"/tmp/{repo_name}_old"
     print(f"Cloning old repository at {old_repo_path} with url {mirror_url}")
@@ -244,7 +250,7 @@ jobs:
 
   push_to_mirror:
     needs: [check_coding_style, run_tests, check_repo, check_program_compilation]
-    if: ${{{{ github.event_name == 'push' && github.actor != 'github-actions[bot]' && startsWith(github.repository, '{USERNAME}') }}}}
+    if: ${{{{ github.event_name == 'push' && github.actor != 'github-actions[bot]' && startsWith(github.repository, '{owner}') }}}}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -263,7 +269,7 @@ jobs:
 
     # Initialiser un nouveau dépôt git dans le nouveau repository local
     os.system(f"cd {new_repo_path} && git init")
-    os.system(f"cd {new_repo_path} && git remote add origin git@github.com:{USERNAME}/{repo_name}.git")
+    os.system(f"cd {new_repo_path} && git remote add origin git@github.com:{owner}/{repo_name}.git")
     os.system(f"cd {new_repo_path} && git add .")
     os.system(f"cd {new_repo_path} && git commit -m 'Initial commit with workflow and old repository content'")
     os.system(f"cd {new_repo_path} && git branch -M main")
@@ -280,34 +286,156 @@ def build_dotenv():
         file.write(f'GITHUB_API_KEY={GITHUB_API_KEY}\n')
         file.write(f"GITHUB_USERNAME={USERNAME}\n")
 
+# Function to check if the user has access to an organization
+def check_organization_access(org_name):
+    url = f"https://api.github.com/orgs/{org_name}/members/{USERNAME}"
+    headers = {
+        "Authorization": f"token {GITHUB_API_KEY}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    response = requests.get(url, headers=headers)
+    if response.status_code == 204:
+        return True  # User is a public member
+    elif response.status_code == 404:
+        # Check if user is a private member or has access to create repos
+        url = f"https://api.github.com/orgs/{org_name}"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            # Try to list repos to check permissions
+            url = f"https://api.github.com/orgs/{org_name}/repos"
+            response = requests.get(url, headers=headers)
+            return response.status_code == 200
+    return False
+
+# Function to get user's organizations
+def get_user_organizations():
+    url = "https://api.github.com/user/orgs"
+    headers = {
+        "Authorization": f"token {GITHUB_API_KEY}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        orgs = response.json()
+        return [org['login'] for org in orgs]
+    else:
+        print(f"Failed to get organizations: {response.json()}")
+        return []
+
 # Main script
 def main():
+    global SSH_PRIVATE_KEY, GITHUB_API_KEY, USERNAME
+    
     if not os.path.exists('.env') or not SSH_PRIVATE_KEY or not GITHUB_API_KEY or not USERNAME:
         build_dotenv()
         load_dotenv()
+        SSH_PRIVATE_KEY = os.getenv('SSH_PRIVATE_KEY')
+        GITHUB_API_KEY = os.getenv('GITHUB_API_KEY')
+        USERNAME = os.getenv('GITHUB_USERNAME')
+    
+    # Get the organization repository URL
     if len(os.sys.argv) > 1:
         org_repo_url = os.sys.argv[1]
     else:
-        org_repo_url = input("Enter the organization repository URL (HTTPS URL): ")
+        org_repo_url = input("Enter the organization repository URL (HTTPS URL): ").strip()
+        
+    if not org_repo_url:
+        print("❌ Error: Repository URL cannot be empty")
+        return
+    
+    # Parse repository name
     old_repo_name = org_repo_url.split('/')[-1]
     old_repo_name = old_repo_name.replace('.git', '')
-    repo_name = old_repo_name.split('-')[-2]
-    if input(f"Do you want to name the new repo '{repo_name}' ? (y/n): ").lower() not in ['y', ' ']:
-        repo_name = input("Enter the correct repository name: ")
+    
+    # Try to extract repo name from the URL structure
+    url_parts = org_repo_url.split('/')
+    if len(url_parts) >= 2:
+        # Try to get repo name - could be the last part or second to last if it has specific patterns
+        potential_name = url_parts[-1].replace('.git', '')
+        if '-' in potential_name:
+            # If it contains dashes, try to extract meaningful part
+            name_parts = potential_name.split('-')
+            if len(name_parts) >= 2:
+                repo_name = name_parts[-2] if name_parts[-2] else potential_name
+            else:
+                repo_name = potential_name
+        else:
+            repo_name = potential_name
+    else:
+        repo_name = old_repo_name
+    
+    # Fallback if repo_name is empty
+    if not repo_name:
+        repo_name = input("Enter the repository name: ")
+    else:
+        if input(f"Do you want to name the new repo '{repo_name}' ? (y/n): ").lower() not in ['y', ' ']:
+            repo_name = input("Enter the correct repository name: ")
+    
+    # Ask whether to create as user or organization repository
+    print("\nWhere would you like to create the new repository?")
+    print("1. Personal account (user)")
+    print("2. Organization")
+    
+    choice = input("Enter your choice (1 or 2): ").strip()
+    
+    is_org = False
+    owner = USERNAME  # Default to user
+    
+    if choice == "2":
+        is_org = True
+        # Show available organizations
+        user_orgs = get_user_organizations()
+        if user_orgs:
+            print(f"\nYour organizations:")
+            for i, org in enumerate(user_orgs, 1):
+                print(f"{i}. {org}")
+            
+            org_choice = input(f"\nEnter organization name (or choose number 1-{len(user_orgs)}): ").strip()
+            
+            # Check if it's a number choice
+            try:
+                org_index = int(org_choice) - 1
+                if 0 <= org_index < len(user_orgs):
+                    owner = user_orgs[org_index]
+                else:
+                    owner = org_choice
+            except ValueError:
+                owner = org_choice
+        else:
+            owner = input("Enter the organization name: ")
+        
+        # Verify organization access
+        if not check_organization_access(owner):
+            print(f"Warning: You may not have access to create repositories in organization '{owner}'")
+            if input("Continue anyway? (y/n): ").lower() != 'y':
+                return
+    
+    print(f"\nCreating repository '{repo_name}' in {'organization' if is_org else 'user account'} '{owner}'")
+    
+    # Convert URL formats
     if org_repo_url.startswith("https://"):
         org_repo_url = org_repo_url[8:]
     elif org_repo_url.startswith("http://"):
         org_repo_url = org_repo_url[7:]
     elif org_repo_url.startswith("git@"):
         org_repo_url = org_repo_url[4:].replace(':', '/')
+    
     ssh_repo_url = f"git@{org_repo_url.replace('github.com/', 'github.com:')}"
     print(f"Repository SSH URL: {ssh_repo_url}")
+    
     description = input("Enter a description for the new repository: ")
 
-    create_repository(repo_name, description)
-    add_secret(repo_name, "SSH_PRIVATE_KEY", SSH_PRIVATE_KEY)
-    add_variable(repo_name, "MIRROR_URL", ssh_repo_url)
-    create_workflow(repo_name, ssh_repo_url, org_repo_url)
+    # Create repository and set up workflow
+    if create_repository(repo_name, description, owner, is_org):
+        add_secret(repo_name, "SSH_PRIVATE_KEY", SSH_PRIVATE_KEY, owner)
+        add_variable(repo_name, "MIRROR_URL", ssh_repo_url, owner)
+        create_workflow(repo_name, ssh_repo_url, org_repo_url, owner)
+        print(f"\n✅ Repository setup completed successfully!")
+        print(f"🔗 Repository URL: https://github.com/{owner}/{repo_name}")
+    else:
+        print("❌ Failed to create repository. Please check your permissions and try again.")
 
 if __name__ == "__main__":
     main()
